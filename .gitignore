@@ -1,0 +1,8 @@
+node_modules/
+.env
+
+# Local Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# Test upload artifact
+knowledge/test_upload.md
