@@ -1,4 +1,5 @@
 import "dotenv/config";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as url from "node:url";
 import express from "express";
@@ -9,6 +10,7 @@ import { createKnowledgeAgent } from "./agent.js";
 import { createListConceptsTool, createReadConceptTool, createWriteConceptTool } from "./tools/index.js";
 import { generateFrontmatter, slugify } from "./generateFrontmatter.js";
 import { parseOkf, validateOkf, serializeOkf, stripFrontmatter } from "./okf.js";
+import { resolveInsideKnowledge } from "./paths.js";
 
 registerBuiltInApiProviders();
 
@@ -44,6 +46,34 @@ app.get("/api/concepts/:file", async (req, res) => {
     res.json({ content: firstText(result.content) });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Update an existing concept's full markdown. Routes through writeTool so the
+// traversal guard and OKF validation are enforced exactly like uploads.
+app.put("/api/concepts/:file", async (req, res) => {
+  const content = (req.body as { content?: string }).content ?? "";
+  try {
+    await writeTool.execute("", { filePath: req.params["file"] ?? "", content });
+    res.json({ file: req.params["file"], content });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Delete a concept. No delete tool exists; guard the path and unlink directly.
+app.delete("/api/concepts/:file", async (req, res) => {
+  const resolved = resolveInsideKnowledge(config.knowledgeDir, req.params["file"] ?? "");
+  if (!resolved.ok) {
+    res.status(400).json({ error: resolved.error });
+    return;
+  }
+  try {
+    await fs.unlink(resolved.absolutePath);
+    res.json({ file: req.params["file"] });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    res.status(code === "ENOENT" ? 404 : 400).json({ error: (err as Error).message });
   }
 });
 
